@@ -38,6 +38,8 @@ const userSchema = new mongoose.Schema({
                 throw new Error('password cant have password')
             }
         }
+    }, avatar: {
+        type: Buffer
     },
     tokens: [{
         token: {
@@ -80,7 +82,7 @@ userSchema.statics.findByCredentials = async (email, password) => {
 
 userSchema.methods.generateAuthToken = async function () {
     const user = this
-    const token = jwt.sign({ _id: user._id.toString() }, 'thisismytoken')
+    const token = jwt.sign({ _id: user._id.toString() }, process.env.JWTScript)
     user.tokens = user.tokens.concat({ token })
     await user.save()
     return token

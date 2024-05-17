@@ -1,17 +1,30 @@
 import express from "express"
 import User from "../models/user.js"
 import auth from "../middleware/auth.js"
+import sharp from "sharp"
 const router = new express.Router()
 import multer from "multer"
+import sendEmail from "../emails/account.js"
+
 const upload = multer({
-    dest: 'avatars'
+    // dest: "avatars",
+    limits: {
+        fileSize: 1000000
+    },
+    fileFilter(req, file, cb) {
+        if (!file.originalname.match(/\.(jpeg|jpeg|png|jpg)$/)) {
+            return cb(new Error('Please upload an image'))
+        }
+        cb(undefined, true)
+    }
 })
+
 // adding a new user
 router.post('/users', async (req, res) => {
     const user = new User(req.body)
-
     try {
         await user.save()
+        sendEmail(user.email, user.name, "this is a welcome email to")
         const token = await user.generateAuthToken()
         res.status(201).send({ user, token })
     } catch (error) {
@@ -127,6 +140,7 @@ router.delete('/users/me', auth, async (req, res) => {
 
     try {
         const user = await User.findByIdAndDelete(req.user._id)
+        sendEmail(user.email, user.name, "this is a farewell email to")
         if (!user) {
             return res.status(404).send({ error: "there is no user with this id" })
         }
@@ -141,8 +155,34 @@ router.delete('/users/me', auth, async (req, res) => {
 
 
 
-router.post('/users/me/upload', upload.single('avatars'), (req, res) => {
+router.post('/users/me/upload', auth, upload.single('avatars'), async (req, res) => {
+    const buffer = await sharp(req.file.buffer).resize({ width: 250, height: 250 }).png().toBuffer()
+    req.user.avatar = buffer
+
+    await req.user.save()
     res.status(200).send()
+}, (error, req, res, next) => {
+    res.status(400).send({ error: error.message })
+})
+
+
+router.delete('/users/me/upload', auth, async (req, res) => {
+    req.user.avatar = undefined
+    await req.user.save()
+    res.status(200).send()
+})
+
+router.get('/users/:id/avatar', async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id)
+        if (!user || !user.avatar) {
+            throw new Error();
+        }
+        res.set("Content-Type", "image/jpg");
+        res.status(200).send(user.avatar)
+    } catch (e) {
+        res.status(400).send(e)
+    }
 })
 
 export default router
